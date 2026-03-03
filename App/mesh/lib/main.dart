@@ -10,7 +10,7 @@ final ble = FlutterReactiveBle();
 // Custom UUIDs I set in ESP32 NodeCode. 
 final Uuid serviceUuid = Uuid.parse("12345678-1234-5678-1234-56789abcdef0"); //Service UUID exposed by ESP32
 final Uuid batCharUuid = Uuid.parse("12345678-1234-5678-1234-56789abcdef1"); // Characteristic UUID that represents battery notifs/reads
-
+final Uuid gpsCharUuid = Uuid.parse("12345678-1234-5678-1234-56789abcdef2"); // Characteristic UUID that represents GPS notifs/reads
 // Define what is consider a “MeshNode” during scanning
 // Nodes are advertising their name, so I'm using name matching
 bool looksLikeMeshNode(DiscoveredDevice d){
@@ -32,8 +32,9 @@ class NodeEntry{
   final String deviceId;
   final String name;
 
-  // Display battery value as text, updated by notifs/reads
+  // Display battery and GPS value as text, updated by notifs/reads
   String batteryText = "--";
+  String gpsText =  "--";
   // Current conection state as reported by FlutterReactiveBle
   DeviceConnectionState connState = DeviceConnectionState.disconnected;
   
@@ -41,6 +42,7 @@ class NodeEntry{
   StreamSubscription<ConnectionStateUpdate>? connSub;
   //Sub to characteristic notfi stream
   StreamSubscription<List<int>>? notifySub;
+  StreamSubscription<List<int>>? gpsNotifySub;
 
   NodeEntry({required this.deviceId, required this.name});
 }
@@ -309,6 +311,12 @@ void _connectAndAddNode(DiscoveredDevice d) {
             serviceId: serviceUuid,
             characteristicId: batCharUuid,
           );
+          // Do the same for GPS chars
+          final gpsQc = QualifiedCharacteristic(
+            deviceId: entry.deviceId,
+            serviceId: serviceUuid,
+            characteristicId: gpsCharUuid,
+          );
 
           // Read battery char immediately once (best effort)
           try {
@@ -318,6 +326,15 @@ void _connectAndAddNode(DiscoveredDevice d) {
             // If read fails show error in UI
             entry.batteryText = "read err";
           }
+          // read GPS once
+          try {
+            final value = await ble.readCharacteristic(gpsQc);
+            entry.gpsText = _bytesToText(value);
+          } catch (e) {
+            // If read fails show error in UI
+            entry.gpsText = "read err";
+          }
+
           setState(() {}); 
 
           // Subscribe to notifications to update UI when ESP32 sends change
@@ -325,6 +342,15 @@ void _connectAndAddNode(DiscoveredDevice d) {
           entry.notifySub = ble.subscribeToCharacteristic(qc).listen((data) {
             // Convert raw bytes to txt and store
             entry.batteryText = _bytesToText(data);
+            setState(() {}); // Ppdate list
+          }, onError: (e) {
+            setState(() => _status = "Notify error on ${entry.name}: $e");
+          });
+           // Subscribe to GPS to update UI when ESP32 sends change
+          await entry.gpsNotifySub?.cancel();
+          entry.gpsNotifySub = ble.subscribeToCharacteristic(gpsQc).listen((data) {
+            // Convert raw bytes to txt and store
+            entry.gpsText = _bytesToText(data);
             setState(() {}); // Ppdate list
           }, onError: (e) {
             setState(() => _status = "Notify error on ${entry.name}: $e");
@@ -338,6 +364,7 @@ void _connectAndAddNode(DiscoveredDevice d) {
       // if disconnected: cancel notifs and update streams
       if (update.connectionState == DeviceConnectionState.disconnected) {
         await entry.notifySub?.cancel();
+        await entry.gpsNotifySub?.cancel();
         setState(() => _status = "Disconnected: ${entry.name}");
       }
       // Force UI refresh for connection st updates
@@ -520,7 +547,8 @@ void dispose() {
                             Text("ID: ${n.deviceId}"),
                             Text("State: ${n.connState.name}"),
                             Text("Battery: ${n.batteryText} V"),
-                            // Action row varies depending on connection state!!!!
+                            Text("GPS: ${n.gpsText}"),
+                            // Action row varies depending on connection state!!!! :P
                             Row(
                               children: [
                                 if (n.connState == DeviceConnectionState.connected)
