@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'package:flutter/material.dart';
 import 'package:flutter_reactive_ble/flutter_reactive_ble.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'offline_map_page.dart';
 
 // Shared BLE instance for entire app. FlutterReactiveBle manages scanning, connecting, GATT opperations.
 final ble = FlutterReactiveBle();
@@ -11,6 +12,8 @@ final ble = FlutterReactiveBle();
 final Uuid serviceUuid = Uuid.parse("12345678-1234-5678-1234-56789abcdef0"); //Service UUID exposed by ESP32
 final Uuid batCharUuid = Uuid.parse("12345678-1234-5678-1234-56789abcdef1"); // Characteristic UUID that represents battery notifs/reads
 final Uuid gpsCharUuid = Uuid.parse("12345678-1234-5678-1234-56789abcdef2"); // Characteristic UUID that represents GPS notifs/reads
+final Uuid modeCharUuid = Uuid.parse("12345678-1234-5678-1234-56789abcdef3"); // Characteristic UUID that represents Node's Mode
+
 // Define what is consider a “MeshNode” during scanning
 // Nodes are advertising their name, so I'm using name matching
 bool looksLikeMeshNode(DiscoveredDevice d){
@@ -35,6 +38,8 @@ class NodeEntry{
   // Display battery and GPS value as text, updated by notifs/reads
   String batteryText = "--";
   String gpsText =  "--";
+  String modeText = "--";
+
   // Current conection state as reported by FlutterReactiveBle
   DeviceConnectionState connState = DeviceConnectionState.disconnected;
   
@@ -43,14 +48,99 @@ class NodeEntry{
   //Sub to characteristic notfi stream
   StreamSubscription<List<int>>? notifySub;
   StreamSubscription<List<int>>? gpsNotifySub;
+  StreamSubscription<List<int>>? modeNotifySub;
 
   NodeEntry({required this.deviceId, required this.name});
 }
 
 void main() {
-  // Minimal app for MVP. More to come
-  // home is ConnectionScreen atm
-  runApp(const MaterialApp(home: ConnectionScreen()));
+  runApp(const MeshNodeApp());
+}
+
+class MeshNodeApp extends StatelessWidget {
+  const MeshNodeApp({super.key});
+  //Establishing easy theme to pull from
+  static const Color forest = Color(0xFF1F4D3A);
+  static const Color sage = Color(0xFF6E8B74);
+  static const Color teal = Color(0xFF2E6F77);
+  static const Color cream = Color(0xFFF4F1E8);
+  static const Color mist = Color(0xFFE6EFE8);
+  static const Color sand = Color(0xFFE9E3D6);
+  static const Color border = Color(0xFFD3DDD4);
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = ColorScheme.fromSeed(
+      seedColor: forest,
+      brightness: Brightness.light,
+      primary: forest,
+      secondary: teal,
+      surface: cream,
+    );
+
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        useMaterial3: true,
+        colorScheme: scheme,
+        scaffoldBackgroundColor: cream,
+        appBarTheme: const AppBarTheme(
+          backgroundColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: false,
+          foregroundColor: forest,
+          titleTextStyle: TextStyle(
+            fontSize: 26,
+            fontWeight: FontWeight.w700,
+            color: forest,
+            letterSpacing: 0.2,
+          ),
+        ),
+        cardTheme: CardThemeData(
+          color: Colors.white.withAlpha(225),
+          elevation: 2,
+          shadowColor: Colors.black12,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+            side: const BorderSide(color: border),
+          ),
+        ),
+        elevatedButtonTheme: ElevatedButtonThemeData(
+          style: ElevatedButton.styleFrom(
+            backgroundColor: forest,
+            foregroundColor: Colors.white,
+            padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+            textStyle: const TextStyle(
+              fontSize: 16,
+              fontWeight: FontWeight.w700,
+            ),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(18),
+            ),
+          ),
+        ),
+        textButtonTheme: TextButtonThemeData(
+          style: TextButton.styleFrom(
+            foregroundColor: teal,
+            textStyle: const TextStyle(
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ),
+        dialogTheme: DialogThemeData(
+          backgroundColor: cream,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(22),
+          ),
+        ),
+        dividerTheme: const DividerThemeData(
+          color: border,
+          thickness: 1,
+        ),
+      ),
+      home: const ConnectionScreen(),
+    );
+  }
 }
 
 class ConnectionScreen extends StatefulWidget{
@@ -73,6 +163,14 @@ class _ConnectionScreenState extends State<ConnectionScreen>{
 
   String _status = "Idle"; // Default. Displayed at top of app
   bool _isScanning = false; 
+  //Continuing theme
+  static const Color forest = MeshNodeApp.forest;
+  static const Color sage = MeshNodeApp.sage;
+  static const Color teal = MeshNodeApp.teal;
+  static const Color cream = MeshNodeApp.cream;
+  static const Color mist = MeshNodeApp.mist;
+  static const Color sand = MeshNodeApp.sand;
+  static const Color border = MeshNodeApp.border;
 
   @override
   void initState() {
@@ -149,14 +247,36 @@ Future<void> _stopScanAndShowPicker() async {
           child: ListView.separated(
             shrinkWrap: true,
             itemCount: candidates.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
+            separatorBuilder: (_, __) => const Divider(height: 16),
             itemBuilder: (_, i) {
               final d = candidates[i];
               return ListTile(
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(16),
+                ),
+                contentPadding: const EdgeInsets.symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                leading: Container(
+                  width: 42,
+                  height: 42,
+                  decoration: BoxDecoration(
+                    color: mist,
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                  child: const Icon(Icons.hub_outlined, color: forest),
+                ),
                 // Prefer name if avaliable, else show "Unnamed"
-                title: Text(d.name.isNotEmpty ? d.name : "Unnamed"),
+                title: Text(
+                  d.name.isNotEmpty ? d.name : "Unnamed",
+                  style: const TextStyle(fontWeight: FontWeight.w700),
+                  ),
                 // Show ID and RSSI
-                subtitle: Text("ID: ${d.id}\nRSSI: ${d.rssi}"),
+                subtitle: Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text("ID: ${d.id}\nRSSI: ${d.rssi}"),
+                ),
                 isThreeLine: true,
                 // Selecting returns device info in pop-up
                 onTap: () => Navigator.pop(ctx, d),
@@ -204,7 +324,7 @@ Future<void> _scanForMeshNode() async {
   // Update UI before scanning
   setState(() {
     _isScanning = true;
-    _status = "Scanning for MeshNode (5s)...";
+    _status = "Scanning for nearby nodes (5s)...";
   });
 
   // Begin scanning:
@@ -256,7 +376,13 @@ Future<bool> _confirmConnectDialog(DiscoveredDevice d) async {
                 onPressed: () => Navigator.pop(ctx, false),
                 child: const Text("No"),
               ),
-              ElevatedButton(
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: forest,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(14),
+                  ),
+                ),
                 onPressed: () => Navigator.pop(ctx, true),
                 child: const Text("Yes"),
               ),
@@ -318,6 +444,12 @@ void _connectAndAddNode(DiscoveredDevice d) {
             characteristicId: gpsCharUuid,
           );
 
+          final modeQc = QualifiedCharacteristic(
+            deviceId: entry.deviceId,
+            serviceId: serviceUuid,
+            characteristicId: modeCharUuid,
+          );
+
           // Read battery char immediately once (best effort)
           try {
             final value = await ble.readCharacteristic(qc);
@@ -335,6 +467,12 @@ void _connectAndAddNode(DiscoveredDevice d) {
             entry.gpsText = "read err";
           }
 
+          try {
+            final value = await ble.readCharacteristic(modeQc);
+            entry.modeText = _bytesToText(value);
+          } catch (e) {
+            entry.modeText = "read err";
+          }
           setState(() {}); 
 
           // Subscribe to notifications to update UI when ESP32 sends change
@@ -353,9 +491,16 @@ void _connectAndAddNode(DiscoveredDevice d) {
             entry.gpsText = _bytesToText(data);
             setState(() {}); // Ppdate list
           }, onError: (e) {
-            setState(() => _status = "Notify error on ${entry.name}: $e");
+            setState(() => _status = "GPS Notify error on ${entry.name}: $e");
           });
-
+          await entry.gpsNotifySub?.cancel();
+          entry.modeNotifySub = ble.subscribeToCharacteristic(modeQc).listen((data) {
+            entry.modeText = _bytesToText(data);
+            setState(() {}); // Ppdate list
+          }, onError: (e) {
+            setState(() => _status = "Mode Notify error on ${entry.name}: $e");
+          });
+          
           setState(() => _status = "Receiving battery from ${entry.name}...");
         } catch (e) {
           setState(() => _status = "Discover error on ${entry.name}: $e");
@@ -365,6 +510,7 @@ void _connectAndAddNode(DiscoveredDevice d) {
       if (update.connectionState == DeviceConnectionState.disconnected) {
         await entry.notifySub?.cancel();
         await entry.gpsNotifySub?.cancel();
+        await entry.modeNotifySub?.cancel();
         setState(() => _status = "Disconnected: ${entry.name}");
       }
       // Force UI refresh for connection st updates
@@ -414,6 +560,8 @@ void _reconnect(NodeEntry n) {
 Future<void> _removeNode(NodeEntry n) async {
     // Cancel char notif/connection streams
     await n.notifySub?.cancel();
+    await n.gpsNotifySub?.cancel();
+    await n.modeNotifySub?.cancel();
     await n.connSub?.cancel();
     // remove from list & update status
     setState(() {
@@ -430,6 +578,8 @@ String _bytesToText(List<int> data) {
 // Disconnect node by cancelling subs. FlutterReactiveBle drops connection when conn stream is cancelled.
 Future<void> _disconnect(NodeEntry n) async {
     await n.notifySub?.cancel();
+    await n.gpsNotifySub?.cancel();
+    await n.modeNotifySub?.cancel();
     await n.connSub?.cancel();
     setState(() {
       n.connState = DeviceConnectionState.disconnected;
@@ -488,17 +638,435 @@ void dispose() {
     for (final n in _nodes) {
       n.notifySub?.cancel();
       n.connSub?.cancel();
+      n.modeNotifySub?.cancel();
+      n.gpsNotifySub?.cancel();
     }
     super.dispose();
   }
 
   @override
+
+
+Widget _buildStatusCard() {
+    final Color dotColor = _isScanning ? teal : forest;
+
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(18),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 14,
+              height: 14,
+              margin: const EdgeInsets.only(top: 4),
+              decoration: BoxDecoration(
+                color: dotColor,
+                shape: BoxShape.circle,
+                boxShadow: [
+                  BoxShadow(
+                    color: dotColor.withAlpha(70),
+                    blurRadius: 10,
+                    spreadRadius: 1,
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 14),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    "System Status",
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: forest,
+                        ),
+                  ),
+                  const SizedBox(height: 6),
+                  Text(
+                    _status,
+                    style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                          height: 1.35,
+                          color: Colors.black87,
+                        ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildScanButton() {
+    final scanBtnText = _isScanning ? "Stop scanning" : "Scan for WilderMesh Node";
+
+    return SizedBox(
+      width: double.infinity,
+      child: ElevatedButton.icon(
+        onPressed: _scanForMeshNode,
+        icon: Icon(_isScanning ? Icons.stop_circle_outlined : Icons.radar),
+        label: Text(scanBtnText),
+      ),
+    );
+  }
+
+  Widget _buildMapCard() {
+    return Card(
+      clipBehavior: Clip.antiAlias,
+      child: Padding(
+        padding: const EdgeInsets.all(14),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: mist,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Icon(Icons.public_outlined, color: forest),
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  "GPS",
+                  style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w800,
+                        color: forest,
+                      ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 14),
+            AspectRatio(
+              aspectRatio: 1.05,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(18),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: border),
+                    borderRadius: BorderRadius.circular(18),
+                  ),
+                  child: const OfflineMapView(),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader() {
+    return Row(
+      children: [
+        Text(
+          "Connected Nodes",
+          style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                fontWeight: FontWeight.w800,
+                color: forest,
+              ),
+        ),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            color: sand,
+            borderRadius: BorderRadius.circular(30),
+            border: Border.all(color: border),
+          ),
+          child: Text(
+            "${_nodes.length}",
+            style: const TextStyle(
+              fontWeight: FontWeight.w800,
+              color: forest,
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _stateChip(NodeEntry n) {
+    final String text = n.connState.name;
+    Color bg;
+    Color fg;
+
+    switch (n.connState) {
+      case DeviceConnectionState.connected:
+        bg = const Color(0xFFDDEDDD);
+        fg = const Color(0xFF28533B);
+        break;
+      case DeviceConnectionState.connecting:
+        bg = const Color(0xFFD9EBF0);
+        fg = const Color(0xFF235E66);
+        break;
+      case DeviceConnectionState.disconnecting:
+        bg = const Color(0xFFEFE4D7);
+        fg = const Color(0xFF785B2C);
+        break;
+      case DeviceConnectionState.disconnected:
+        bg = const Color(0xFFE7E2DB);
+        fg = const Color(0xFF6B6257);
+        break;
+    }
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        text,
+        style: TextStyle(
+          fontSize: 12,
+          fontWeight: FontWeight.w700,
+          color: fg,
+        ),
+      ),
+    );
+  }
+
+  Widget _infoChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+      decoration: BoxDecoration(
+        color: mist,
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: border),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 16, color: teal),
+          const SizedBox(width: 6),
+          Flexible(
+            child: Text(
+              label,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.w600,
+                color: forest,
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildNodeCard(NodeEntry n) {
+    final connected = n.connState == DeviceConnectionState.connected;
+    final connecting = n.connState == DeviceConnectionState.connecting;
+
+    Color glow = connected
+        ? const Color(0xFF4F8A67)
+        : connecting
+            ? teal
+            : const Color(0xFF8A8A8A);
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 14),
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              children: [
+                Container(
+                  width: 14,
+                  height: 14,
+                  decoration: BoxDecoration(
+                    color: glow,
+                    shape: BoxShape.circle,
+                    boxShadow: [
+                      BoxShadow(
+                        color: glow.withAlpha(80),
+                        blurRadius: 10,
+                        spreadRadius: 1,
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(width: 10),
+                Expanded(
+                  child: Text(
+                    n.name,
+                    style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          color: forest,
+                        ),
+                  ),
+                ),
+                _stateChip(n),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Text(
+              "ID: ${n.deviceId}",
+              style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Colors.black54,
+                    fontWeight: FontWeight.w500,
+                  ),
+            ),
+            const SizedBox(height: 14),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _infoChip(Icons.battery_6_bar_outlined, "Battery ${n.batteryText} V"),
+                _infoChip(Icons.route_outlined, "Mode ${n.modeText}"),
+                _infoChip(Icons.location_on_outlined, "GPS ${n.gpsText}"),
+              ],
+            ),
+            const SizedBox(height: 14),
+            Row(
+              children: [
+                if (connected)
+                  TextButton.icon(
+                    onPressed: () => _disconnect(n),
+                    icon: const Icon(Icons.link_off),
+                    label: const Text("Disconnect"),
+                  )
+                else ...[
+                  TextButton.icon(
+                    onPressed: connecting ? null : () => _reconnect(n),
+                    icon: const Icon(Icons.refresh),
+                    label: const Text("Reconnect"),
+                  ),
+                  TextButton.icon(
+                    onPressed: () => _removeNode(n),
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text("Remove"),
+                  ),
+                ],
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildNodeList() {
+  if (_nodes.isEmpty) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 58,
+              height: 58,
+              decoration: BoxDecoration(
+                color: mist,
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const Icon(
+                Icons.device_hub_outlined,
+                color: forest,
+                size: 28,
+              ),
+            ),
+            const SizedBox(height: 14),
+            Text(
+              "No nodes added yet",
+              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    color: forest,
+                  ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              "Scan to discover nearby WilderMesh Nodes.",
+              textAlign: TextAlign.center,
+              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                    color: Colors.black54,
+                  ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  return Column(
+    children: _nodes.map(_buildNodeCard).toList(),
+  );
+}
+
+  @override
   Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text("WilderMesh"),
+      ),
+      body: Container(
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              Color(0xFFF4F1E8),
+              Color(0xFFEAF1EB),
+            ],
+          ),
+        ),
+        child: SafeArea(
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+            children: [
+              _buildStatusCard(),
+              const SizedBox(height: 16),
+              _buildScanButton(),
+              const SizedBox(height: 16),
+              _buildMapCard(),
+              const SizedBox(height: 20),
+              _buildSectionHeader(),
+              const SizedBox(height: 12),
+              _buildNodeList(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+  /*Widget build(BuildContext context) {
     // Button label reflects scanning state
-    final scanBtnText = _isScanning ? "Stop scanning" : "Scan for MeshNode";
+    final scanBtnText = _isScanning ? "Stop scanning" : "Scan for WilderMesh Node";
 
     return Scaffold(
-      appBar: AppBar(title: const Text("MeshNode")),
+      appBar: AppBar(title: const Text("WilderMesh")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -513,13 +1081,30 @@ void dispose() {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _scanForMeshNode,
+                onPressed: _scanForWilderMesh Node,
                 child: Text(scanBtnText),
               ),
             ),
 
             const SizedBox(height: 12),
+
+            AspectRatio(
+              aspectRatio: 1,
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(12),
+                child: Container(
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Colors.grey),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const OfflineMapView(),
+                ),
+              ),
+            ),
+
+            const SizedBox(height: 12),
             const Divider(),
+
             const SizedBox(height: 8),
             // Node header
             Align(
@@ -546,6 +1131,7 @@ void dispose() {
                           children: [
                             Text("ID: ${n.deviceId}"),
                             Text("State: ${n.connState.name}"),
+                            Text("Mode: ${n.modeText}"),
                             Text("Battery: ${n.batteryText} V"),
                             Text("GPS: ${n.gpsText}"),
                             // Action row varies depending on connection state!!!! :P
@@ -585,5 +1171,5 @@ void dispose() {
         ),
       ),
     );
-  }
+  }*/
 }
