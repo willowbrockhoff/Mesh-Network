@@ -40,6 +40,8 @@ class NodeEntry{
   String gpsText =  "--";
   String modeText = "--";
 
+  double ? latitude;
+  double ? longitude;
   // Current conection state as reported by FlutterReactiveBle
   DeviceConnectionState connState = DeviceConnectionState.disconnected;
   
@@ -180,6 +182,29 @@ class _ConnectionScreenState extends State<ConnectionScreen>{
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initPermissions();
     });
+  }
+
+  void _updateNodeGpsFromText(NodeEntry entry, String text) {
+    entry.gpsText = text.trim();
+
+    final parts = entry.gpsText.split(',');
+    if (parts.length != 2) {
+      entry.latitude = null;
+      entry.longitude = null;
+      return;
+    }
+
+    final lat = double.tryParse(parts[0].trim());
+    final lng = double.tryParse(parts[1].trim());
+
+    if (lat == null || lng == null) {
+      entry.latitude = null;
+      entry.longitude = null;
+      return;
+    }
+
+    entry.latitude = lat;
+    entry.longitude = lng;
   }
 
   // Req runtime premission for BLE scanning/connecting on Andriod
@@ -459,12 +484,20 @@ void _connectAndAddNode(DiscoveredDevice d) {
             entry.batteryText = "read err";
           }
           // read GPS once
-          try {
+          /*try {
             final value = await ble.readCharacteristic(gpsQc);
             entry.gpsText = _bytesToText(value);
           } catch (e) {
             // If read fails show error in UI
             entry.gpsText = "read err";
+          }*/
+          try {
+            final value = await ble.readCharacteristic(gpsQc);
+            _updateNodeGpsFromText(entry, _bytesToText(value));
+          } catch (e) {
+            entry.gpsText = "read err";
+            entry.latitude = null;
+            entry.longitude = null;
           }
 
           try {
@@ -488,12 +521,13 @@ void _connectAndAddNode(DiscoveredDevice d) {
           await entry.gpsNotifySub?.cancel();
           entry.gpsNotifySub = ble.subscribeToCharacteristic(gpsQc).listen((data) {
             // Convert raw bytes to txt and store
-            entry.gpsText = _bytesToText(data);
+            //entry.gpsText = _bytesToText(data);
+            _updateNodeGpsFromText(entry, _bytesToText(data));
             setState(() {}); // Ppdate list
           }, onError: (e) {
             setState(() => _status = "GPS Notify error on ${entry.name}: $e");
           });
-          await entry.gpsNotifySub?.cancel();
+          await entry.modeNotifySub?.cancel();
           entry.modeNotifySub = ble.subscribeToCharacteristic(modeQc).listen((data) {
             entry.modeText = _bytesToText(data);
             setState(() {}); // Ppdate list
@@ -715,6 +749,15 @@ Widget _buildStatusCard() {
   }
 
   Widget _buildMapCard() {
+
+    final mapPins = _nodes
+      .where((n) => n.latitude != null && n.longitude != null)
+      .map((n) => MapPinData(id: n.deviceId,
+      label: n.name,
+      latitude: n.latitude!,
+      longitude: n.longitude!,
+      )).toList();
+
     return Card(
       clipBehavior: Clip.antiAlias,
       child: Padding(
@@ -735,7 +778,7 @@ Widget _buildStatusCard() {
                 ),
                 const SizedBox(width: 10),
                 Text(
-                  "GPS",
+                  "Map",
                   style: Theme.of(context).textTheme.titleMedium?.copyWith(
                         fontWeight: FontWeight.w800,
                         color: forest,
@@ -753,7 +796,9 @@ Widget _buildStatusCard() {
                     border: Border.all(color: border),
                     borderRadius: BorderRadius.circular(18),
                   ),
-                  child: const OfflineMapView(),
+                  child: OfflineMapView(
+                    pins: mapPins,
+                  ),
                 ),
               ),
             ),
@@ -1009,7 +1054,14 @@ Widget _buildStatusCard() {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("WilderMesh"),
+        centerTitle: true,
+        title: Padding(
+          padding: const EdgeInsets.only(top: 10.0),
+          child: Image.asset(
+            'assets/images/wildermesh_logo.png',
+            height: 92,
+          ),
+        )
       ),
       body: Container(
         decoration: const BoxDecoration(

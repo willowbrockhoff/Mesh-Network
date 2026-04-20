@@ -4,8 +4,28 @@ import 'package:flutter_map_mbtiles/flutter_map_mbtiles.dart';
 import 'package:latlong2/latlong.dart';
 import 'mbtiles_service.dart';
 
+// Node GPS -> pin on map struct
+class MapPinData {
+  final String id;
+  final String label;
+  final double latitude;
+  final double longitude;
+
+  const MapPinData({
+    required this.id,
+    required this.label,
+    required this.latitude,
+    required this.longitude
+  });
+}
+
 class OfflineMapView extends StatefulWidget {
-  const OfflineMapView({super.key});
+  final List<MapPinData> pins;
+
+  const OfflineMapView({
+    super.key,
+    this.pins = const []
+  });
 
   @override
   State<OfflineMapView> createState() => _OfflineMapViewState();
@@ -30,6 +50,8 @@ class _OfflineMapViewState extends State<OfflineMapView> {
 
       final localPath = await MbtilesService.copyAssetToFileSystem(
         'assets/maps/satellite-2017-11-02_california_humboldt.mbtiles',
+        //'satellite-2017-11-02_california_humboldt.mbtiles',
+        //'assets/maps/ncds_20a.mbtiles',
         'satellite-2017-11-02_california_humboldt.mbtiles',
       );
 
@@ -71,47 +93,62 @@ class _OfflineMapViewState extends State<OfflineMapView> {
   @override
   Widget build(BuildContext context) {
     if (_error != null) {
-      return Container(
-        color: Colors.white,
-        alignment: Alignment.center,
-        padding: const EdgeInsets.all(16),
-        child: Text(
-          'Map failed to load:\n\n$_error',
-          textAlign: TextAlign.center,
-        ),
+      return Padding(
+          padding: const EdgeInsets.all(16),
+          child: Text('Map failed to load:\n\n$_error'),
       );
     }
 
     if (_tileProvider == null) {
-      return Container(
-        color: Colors.white,
-        alignment: Alignment.center,
-        child: Text(_status),
-      );
+      return Center(child: Text(_status));
     }
 
+    final LatLng center = widget.pins.isNotEmpty
+      ? LatLng(widget.pins.first.latitude, widget.pins.first.longitude)
+      : const LatLng(39.73248, -12184437);
+
     return FlutterMap(
-      options: const MapOptions(
-        initialCenter: LatLng(40.850444, -124.030750),
-        initialZoom: 10,
-      ),
-      children: [
-        TileLayer(
-          tileProvider: _tileProvider!,
+        options: MapOptions(
+          initialCenter: LatLng(40.850444, -124.030750),
+          initialZoom: 14,
         ),
-        MarkerLayer(
-          markers: [
-            Marker(
-              point: LatLng(40.850444, -124.030750),
-              width: 40,
-              height: 40,
-              child: const Icon(
-                Icons.location_pin,
-                color: Colors.red,
-                size: 40,
+        children: [
+          TileLayer(
+            tileProvider: _tileProvider!,
+          ),
+          MarkerLayer(
+            markers: widget.pins.map((pin){
+              return Marker(
+                point: LatLng(pin.latitude, pin.longitude), // test marker for humbolt dataset
+                width: 90,
+                height: 70,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(
+                    Icons.location_pin,
+                    color: Colors.red,
+                    size: 40,
+                    ),
+                    Container( 
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(220),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Text( 
+                        pin.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle( 
+                          fontSize: 10,
+                          fontWeight: FontWeight.w600,
+                        ),
+                    ),
+                  ),
+                ],
               ),
-            ),
-          ],
+            );
+          }).toList(),
         ),
       ],
     );
