@@ -1,0 +1,19 @@
+{
+  "type": "FeatureCollection",
+  "features": [
+    {
+      "type": "Feature",
+      "properties": { "name": "butte_co" },
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[
+          [-122.08, 39.27],
+          [-121.05, 39.27],
+          [-121.05, 40.16],
+          [-122.08, 40.16],
+          [-122.08, 39.27]
+        ]]
+      }
+    }
+  ]
+}
