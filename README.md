@@ -6,4 +6,6 @@ To accomplish this, I created a system of small, portable nodes that communicate
 
 I also created an Android application that connects to nearby nodes using BLE, acting as an offline interface for users to monitor the network, check node's locations, and send alerts. Within the app you can scan for and connect to nearby nodes, view the node's location on an offline map, view nodes battery status, and a nodes current "mode" 
 
-Nodes can operate in Normal, Low Power, or SOS mode. Low Power mode adjusts the node's behavior to be as energy efficient as possible. SOS mode alerts everyone within the network that this node is facing an emergency situation. 
+Nodes can operate in Normal, Low Power, or SOS mode. Low Power mode adjusts the node's behavior to be as energy efficient as possible. SOS mode alerts everyone within the network that this node is facing an emergency situation.   
+
+Node's location can be viewed as GPS coordinates as well as a pin on an offline map. I built the offline map using vector tiles from OpenStreetMap and trimming them to Butte Co. using mbtile-extracts. The tiles are stored locally on the device to allow offline use.
